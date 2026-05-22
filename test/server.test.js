@@ -129,6 +129,21 @@ test('GET /api/locale returns English for non-China country headers', async () =
   }
 });
 
+test('GET /api/locale supports EdgeOne country header', async () => {
+  const server = await createTestServer();
+  try {
+    const response = await fetch(`${server.baseUrl}/api/locale`, {
+      headers: { 'eo-client-ipcountry': 'US' }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.locale, 'en');
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /api/chat uses English system prompt for foreign IP requests', async () => {
   const calls = [];
   const fakeFetch = async (url, options) => {

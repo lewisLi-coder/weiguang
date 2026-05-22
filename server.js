@@ -35,7 +35,12 @@ function jsonError(response, status, message) {
 function getLocale(request) {
   const explicitLocale = request.query?.locale || request.body?.locale;
   if (explicitLocale === 'zh' || explicitLocale === 'en') return explicitLocale;
-  const country = String(request.headers['x-vercel-ip-country'] || request.headers['cf-ipcountry'] || '').toUpperCase();
+  const country = String(
+    request.headers['eo-client-ipcountry'] ||
+    request.headers['x-vercel-ip-country'] ||
+    request.headers['cf-ipcountry'] ||
+    ''
+  ).toUpperCase();
   return !country || country === 'CN' ? 'zh' : 'en';
 }
 
