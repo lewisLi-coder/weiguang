@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
     <title>微光 · 心灵陪伴</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -337,7 +337,7 @@
         } catch (error) {
             console.error("聊天请求错误：", error);
             removeTyping();
-            addMessage("我这里暂时没有连上后端。检查一下服务和 .env 里的 ZHIPU_API_KEY，再试一次好吗？", false);
+            addMessage(`我这里暂时没有连上后端：${error.message}`, false);
         } finally {
             sendBtn.disabled = false;
             userInput.focus();

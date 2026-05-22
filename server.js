@@ -103,6 +103,16 @@ function createApp({
     response.json({ hasApiKey: Boolean(apiKey) });
   });
 
+  app.get('/api/debug', (_request, response) => {
+    response.json({
+      hasApiKey: Boolean(apiKey),
+      hasUpstashUrl: Boolean(process.env.UPSTASH_REDIS_REST_URL),
+      hasUpstashToken: Boolean(process.env.UPSTASH_REDIS_REST_TOKEN),
+      historyStore: process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN ? 'upstash' : 'file',
+      node: process.version
+    });
+  });
+
   app.get('/api/history', async (request, response, next) => {
     try {
       response.json({ messages: await readHistory(historyStore, getClientId(request)) });
