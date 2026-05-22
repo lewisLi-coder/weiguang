@@ -221,6 +221,15 @@
     let audioReplyEnabled = true;
     let currentReplyAudio = null;
 
+    function getClientId() {
+        let clientId = localStorage.getItem("warmChatClientId");
+        if (!clientId) {
+            clientId = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+            localStorage.setItem("warmChatClientId", clientId);
+        }
+        return clientId;
+    }
+
     function addMessage(text, isUser) {
         const div = document.createElement("div");
         div.className = `message ${isUser ? "user" : "bot"}`;
@@ -259,7 +268,7 @@
 
     async function loadHistory() {
         try {
-            const response = await fetch("/api/history");
+            const response = await fetch(`/api/history?clientId=${encodeURIComponent(getClientId())}`);
             if (!response.ok) throw new Error("history request failed");
             const data = await response.json();
             renderHistory(data.messages);
@@ -273,7 +282,7 @@
         const response = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: userMessage })
+            body: JSON.stringify({ message: userMessage, clientId: getClientId() })
         });
         const data = await response.json();
         if (!response.ok) {
