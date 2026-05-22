@@ -171,22 +171,3 @@ test('POST /api/chat uses English system prompt for foreign IP requests', async 
     await server.close();
   }
 });
-
-test('POST /api/asr returns 500 when API key is missing', async () => {
-  const server = await createTestServer();
-  try {
-    const form = new FormData();
-    form.append('audio', new Blob(['audio'], { type: 'audio/webm' }), 'clip.webm');
-
-    const response = await fetch(`${server.baseUrl}/api/asr`, {
-      method: 'POST',
-      body: form
-    });
-    const body = await response.json();
-
-    assert.equal(response.status, 500);
-    assert.match(body.error, /ZHIPU_API_KEY/);
-  } finally {
-    await server.close();
-  }
-});

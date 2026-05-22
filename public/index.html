@@ -190,9 +190,8 @@
             listening: "微光正在倾听...",
             historyError: "读取历史记录失败：",
             chatError: "我这里暂时没有连上后端：",
-            recording: "正在录音，再点一次结束。",
-            transcribing: "正在把语音变成文字...",
-            asrError: "我没能听清这段语音。检查麦克风权限、后端服务和 ZHIPU_API_KEY 后，可以再试一次。",
+            recording: "正在听你说话，再点一次结束。",
+            asrError: "我没能听清这段语音。请检查浏览器是否支持语音识别，并允许麦克风权限。",
             unsupportedAudio: "这个浏览器暂时不支持录音，可以先用文字和我说。",
             micError: "麦克风没有准备好。请允许浏览器使用麦克风后再试一次。"
         },
@@ -205,10 +204,9 @@
             listening: "Weiguang is listening...",
             historyError: "Failed to load history:",
             chatError: "I could not reach the backend:",
-            recording: "Recording. Tap again to stop.",
-            transcribing: "Turning your voice into text...",
-            asrError: "I could not understand that audio. Please check microphone permission, backend service, and ZHIPU_API_KEY, then try again.",
-            unsupportedAudio: "This browser does not support recording. You can still type to me.",
+            recording: "Listening. Tap again to stop.",
+            asrError: "I could not understand that speech. Please check browser speech recognition support and microphone permission.",
+            unsupportedAudio: "This browser does not support speech recognition. You can still type to me.",
             micError: "The microphone is not ready. Please allow microphone access and try again."
         }
     };
@@ -219,12 +217,9 @@
     const voiceBtn = document.getElementById("voiceBtn");
 
     let locale = "zh";
-    let audioContext = null;
-    let mediaStream = null;
-    let processor = null;
-    let source = null;
-    let recordedChunks = [];
-    let recordingSampleRate = 44100;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let isRecognizing = false;
 
     function t(key) {
         return copy[locale][key] || copy.zh[key] || key;
@@ -350,124 +345,73 @@
         }
     }
 
-    function mergeAudioChunks(chunks) {
-        const length = chunks.reduce((total, chunk) => total + chunk.length, 0);
-        const result = new Float32Array(length);
-        let offset = 0;
-        chunks.forEach((chunk) => {
-            result.set(chunk, offset);
-            offset += chunk.length;
-        });
-        return result;
-    }
+    function createRecognition() {
+        const instance = new SpeechRecognition();
+        instance.lang = locale === "en" ? "en-US" : "zh-CN";
+        instance.interimResults = true;
+        instance.continuous = false;
 
-    function encodeWav(samples, sampleRate) {
-        const buffer = new ArrayBuffer(44 + samples.length * 2);
-        const view = new DataView(buffer);
+        let finalText = "";
 
-        function writeString(offset, string) {
-            for (let i = 0; i < string.length; i++) {
-                view.setUint8(offset + i, string.charCodeAt(i));
+        instance.onresult = (event) => {
+            let interimText = "";
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalText += transcript;
+                } else {
+                    interimText += transcript;
+                }
             }
-        }
-
-        writeString(0, "RIFF");
-        view.setUint32(4, 36 + samples.length * 2, true);
-        writeString(8, "WAVE");
-        writeString(12, "fmt ");
-        view.setUint32(16, 16, true);
-        view.setUint16(20, 1, true);
-        view.setUint16(22, 1, true);
-        view.setUint32(24, sampleRate, true);
-        view.setUint32(28, sampleRate * 2, true);
-        view.setUint16(32, 2, true);
-        view.setUint16(34, 16, true);
-        writeString(36, "data");
-        view.setUint32(40, samples.length * 2, true);
-
-        let offset = 44;
-        for (let i = 0; i < samples.length; i++, offset += 2) {
-            const sample = Math.max(-1, Math.min(1, samples[i]));
-            view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-        }
-
-        return new Blob([view], { type: "audio/wav" });
-    }
-
-    async function startRecording() {
-        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioContext = new AudioContext();
-        recordingSampleRate = audioContext.sampleRate;
-        recordedChunks = [];
-        source = audioContext.createMediaStreamSource(mediaStream);
-        processor = audioContext.createScriptProcessor(4096, 1, 1);
-
-        processor.onaudioprocess = (event) => {
-            recordedChunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+            userInput.value = `${finalText}${interimText}`.trim();
+            resizeInput();
         };
 
-        source.connect(processor);
-        processor.connect(audioContext.destination);
+        instance.onerror = (event) => {
+            console.error("Speech recognition error:", event.error);
+            addMessage(t("asrError"), false);
+        };
+
+        instance.onend = () => {
+            isRecognizing = false;
+            voiceBtn.classList.remove("recording");
+            voiceBtn.innerText = "🎙";
+            removeTyping();
+            userInput.focus();
+        };
+
+        return instance;
+    }
+
+    function startRecording() {
+        recognition = createRecognition();
+        isRecognizing = true;
         voiceBtn.classList.add("recording");
         voiceBtn.innerText = "■";
         showTyping(t("recording"));
+        recognition.start();
     }
 
-    async function stopRecording() {
-        if (processor) processor.disconnect();
-        if (source) source.disconnect();
-        if (mediaStream) mediaStream.getTracks().forEach((track) => track.stop());
-        if (audioContext) await audioContext.close();
-
-        processor = null;
-        source = null;
-        mediaStream = null;
-        audioContext = null;
-        voiceBtn.classList.remove("recording");
-        voiceBtn.innerText = "🎙";
-        removeTyping();
-
-        const audioBlob = encodeWav(mergeAudioChunks(recordedChunks), recordingSampleRate);
-        recordedChunks = [];
-        await transcribeAudio(audioBlob);
-    }
-
-    async function transcribeAudio(audioBlob) {
-        const form = new FormData();
-        form.append("audio", audioBlob, "recording.wav");
-        showTyping(t("transcribing"));
-        voiceBtn.disabled = true;
-
-        try {
-            const response = await fetch("/api/asr", { method: "POST", body: form });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || "ASR request failed");
-            userInput.value = data.text || "";
-            resizeInput();
-            userInput.focus();
-        } catch (error) {
-            console.error("语音识别错误：", error);
-            addMessage(t("asrError"), false);
-        } finally {
-            removeTyping();
-            voiceBtn.disabled = false;
+    function stopRecording() {
+        if (recognition) {
+            recognition.stop();
         }
     }
 
-    async function toggleRecording() {
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    function toggleRecording() {
+        if (!SpeechRecognition) {
             addMessage(t("unsupportedAudio"), false);
             return;
         }
 
         try {
-            if (mediaStream) {
-                await stopRecording();
+            if (isRecognizing) {
+                stopRecording();
             } else {
-                await startRecording();
+                startRecording();
             }
         } catch (error) {
-            console.error("录音错误：", error);
+            console.error("Speech recognition start error:", error);
             removeTyping();
             voiceBtn.classList.remove("recording");
             voiceBtn.innerText = "🎙";
