@@ -4,5 +4,3 @@ data/chat-history.json
 server.out.log
 server.err.log
 .vercel/
-.edgeone/
-.edgeone-output/
