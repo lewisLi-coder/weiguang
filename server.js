@@ -113,6 +113,28 @@ function createApp({
     });
   });
 
+  app.get('/api/debug/redis', async (request, response, next) => {
+    try {
+      if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+        return jsonError(response, 500, 'Missing Upstash Redis environment variables.');
+      }
+
+      const clientId = `debug-${Date.now()}`;
+      const debugStore = createDefaultHistoryStore();
+      await appendHistory(debugStore, clientId, {
+        role: 'user',
+        content: 'redis-write-test'
+      });
+      const messages = await readHistory(debugStore, clientId);
+      response.json({
+        ok: messages.some((message) => message.content === 'redis-write-test'),
+        count: messages.length
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get('/api/history', async (request, response, next) => {
     try {
       response.json({ messages: await readHistory(historyStore, getClientId(request)) });
