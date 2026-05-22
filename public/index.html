@@ -34,10 +34,6 @@
             padding: 24px 28px 16px;
             border-bottom: 1px solid #eee0d6;
             background: rgba(255, 250, 244, 0.82);
-            display: flex;
-            justify-content: space-between;
-            gap: 16px;
-            align-items: center;
         }
         .header h1 {
             font-size: 1.8rem;
@@ -49,20 +45,6 @@
             color: #9a7464;
             font-size: 0.88rem;
             margin-top: 6px;
-        }
-        .audio-toggle {
-            border: 1px solid #dfcfc3;
-            background: #fff7ef;
-            color: #765541;
-            height: 38px;
-            min-width: 38px;
-            box-shadow: none;
-            font-size: 0.95rem;
-        }
-        .audio-toggle.active {
-            background: #7f8f74;
-            border-color: #7f8f74;
-            color: white;
         }
         .messages {
             flex: 1;
@@ -185,41 +167,94 @@
 <body>
 <div class="chat-container">
     <div class="header">
-        <div>
-            <h1>微光</h1>
-            <p>一个安静的朋友 · 随时倾听你</p>
-        </div>
-        <button id="audioToggle" class="audio-toggle active" type="button" title="语音回复开关" aria-label="语音回复开关">🔊</button>
+        <h1 data-i18n="title">微光</h1>
+        <p data-i18n="subtitle">一个安静的朋友 · 随时倾听你</p>
     </div>
     <div class="messages" id="messages"></div>
     <div class="input-area">
         <button id="voiceBtn" type="button" title="语音输入" aria-label="语音输入">🎙</button>
-        <textarea id="userInput" rows="1" placeholder="说说你的心情..."></textarea>
+        <textarea id="userInput" rows="1" placeholder="说说你的心情..." data-i18n-placeholder="placeholder"></textarea>
         <button id="sendBtn" type="button" title="发送" aria-label="发送">➤</button>
     </div>
-    <footer>微光是情感陪伴 AI · 不能替代专业医疗或危机干预</footer>
+    <footer data-i18n="footer">微光是情感陪伴 AI · 不能替代专业医疗或危机干预</footer>
 </div>
 
 <script>
-    const starterMessage = {
-        role: "assistant",
-        content: "慢慢呼吸，我在这里。你可以随便说些什么，开心的、烦心的都好。"
+    const copy = {
+        zh: {
+            title: "微光",
+            subtitle: "一个安静的朋友 · 随时倾听你",
+            placeholder: "说说你的心情...",
+            footer: "微光是情感陪伴 AI · 不能替代专业医疗或危机干预",
+            starter: "慢慢呼吸，我在这里。你可以随便说些什么，开心的、烦心的都好。",
+            listening: "微光正在倾听...",
+            historyError: "读取历史记录失败：",
+            chatError: "我这里暂时没有连上后端：",
+            recording: "正在录音，再点一次结束。",
+            transcribing: "正在把语音变成文字...",
+            asrError: "我没能听清这段语音。检查麦克风权限、后端服务和 ZHIPU_API_KEY 后，可以再试一次。",
+            unsupportedAudio: "这个浏览器暂时不支持录音，可以先用文字和我说。",
+            micError: "麦克风没有准备好。请允许浏览器使用麦克风后再试一次。"
+        },
+        en: {
+            title: "Weiguang",
+            subtitle: "A quiet companion · Here to listen",
+            placeholder: "Share what is on your mind...",
+            footer: "Weiguang is an emotional companion AI · Not a replacement for professional care or crisis support",
+            starter: "Take a slow breath. I am here with you. You can share whatever is on your mind.",
+            listening: "Weiguang is listening...",
+            historyError: "Failed to load history:",
+            chatError: "I could not reach the backend:",
+            recording: "Recording. Tap again to stop.",
+            transcribing: "Turning your voice into text...",
+            asrError: "I could not understand that audio. Please check microphone permission, backend service, and ZHIPU_API_KEY, then try again.",
+            unsupportedAudio: "This browser does not support recording. You can still type to me.",
+            micError: "The microphone is not ready. Please allow microphone access and try again."
+        }
     };
 
     const messagesContainer = document.getElementById("messages");
     const userInput = document.getElementById("userInput");
     const sendBtn = document.getElementById("sendBtn");
     const voiceBtn = document.getElementById("voiceBtn");
-    const audioToggle = document.getElementById("audioToggle");
 
+    let locale = "zh";
     let audioContext = null;
     let mediaStream = null;
     let processor = null;
     let source = null;
     let recordedChunks = [];
     let recordingSampleRate = 44100;
-    let audioReplyEnabled = true;
-    let currentReplyAudio = null;
+
+    function t(key) {
+        return copy[locale][key] || copy.zh[key] || key;
+    }
+
+    function starterMessage() {
+        return { role: "assistant", content: t("starter") };
+    }
+
+    function applyLocale() {
+        document.documentElement.lang = locale === "en" ? "en" : "zh-CN";
+        document.querySelectorAll("[data-i18n]").forEach((element) => {
+            element.innerText = t(element.dataset.i18n);
+        });
+        document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+            element.placeholder = t(element.dataset.i18nPlaceholder);
+        });
+    }
+
+    async function loadLocale() {
+        try {
+            const response = await fetch("/api/locale");
+            if (!response.ok) throw new Error("locale request failed");
+            const data = await response.json();
+            locale = data.locale === "en" ? "en" : "zh";
+        } catch (error) {
+            console.error("Failed to load locale:", error);
+        }
+        applyLocale();
+    }
 
     function getClientId() {
         let clientId = localStorage.getItem("warmChatClientId");
@@ -243,7 +278,7 @@
         messagesContainer.innerHTML = "";
     }
 
-    function showTyping(text = "微光正在倾听...") {
+    function showTyping(text = t("listening")) {
         removeTyping();
         const typingDiv = document.createElement("div");
         typingDiv.className = "typing";
@@ -260,7 +295,7 @@
 
     function renderHistory(messages) {
         clearMessages();
-        const visibleMessages = messages && messages.length ? messages : [starterMessage];
+        const visibleMessages = messages && messages.length ? messages : [starterMessage()];
         visibleMessages.forEach((message) => {
             addMessage(message.content, message.role === "user");
         });
@@ -273,8 +308,8 @@
             const data = await response.json();
             renderHistory(data.messages);
         } catch (error) {
-            console.error("读取历史记录失败：", error);
-            renderHistory([starterMessage]);
+            console.error(t("historyError"), error);
+            renderHistory([starterMessage()]);
         }
     }
 
@@ -282,41 +317,13 @@
         const response = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: userMessage, clientId: getClientId() })
+            body: JSON.stringify({ message: userMessage, clientId: getClientId(), locale })
         });
         const data = await response.json();
         if (!response.ok) {
             throw new Error(data.error || "聊天请求失败");
         }
         return data.reply;
-    }
-
-    async function playReplyAudio(text) {
-        if (!audioReplyEnabled || !text) return;
-
-        try {
-            const response = await fetch("/api/tts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text })
-            });
-            if (!response.ok) {
-                const data = await response.json().catch(() => ({}));
-                throw new Error(data.error || "语音合成失败");
-            }
-
-            const audioBlob = await response.blob();
-            const audioUrl = URL.createObjectURL(audioBlob);
-            if (currentReplyAudio) {
-                currentReplyAudio.pause();
-                URL.revokeObjectURL(currentReplyAudio.src);
-            }
-            currentReplyAudio = new Audio(audioUrl);
-            currentReplyAudio.onended = () => URL.revokeObjectURL(audioUrl);
-            await currentReplyAudio.play();
-        } catch (error) {
-            console.error("语音回复播放失败：", error);
-        }
     }
 
     async function handleSend() {
@@ -333,11 +340,10 @@
             const botReply = await getBotReply(text);
             removeTyping();
             addMessage(botReply, false);
-            playReplyAudio(botReply);
         } catch (error) {
             console.error("聊天请求错误：", error);
             removeTyping();
-            addMessage(`我这里暂时没有连上后端：${error.message}`, false);
+            addMessage(`${t("chatError")}${error.message}`, false);
         } finally {
             sendBtn.disabled = false;
             userInput.focus();
@@ -404,7 +410,7 @@
         processor.connect(audioContext.destination);
         voiceBtn.classList.add("recording");
         voiceBtn.innerText = "■";
-        showTyping("正在录音，再点一次结束。");
+        showTyping(t("recording"));
     }
 
     async function stopRecording() {
@@ -429,19 +435,19 @@
     async function transcribeAudio(audioBlob) {
         const form = new FormData();
         form.append("audio", audioBlob, "recording.wav");
-        showTyping("正在把语音变成文字...");
+        showTyping(t("transcribing"));
         voiceBtn.disabled = true;
 
         try {
             const response = await fetch("/api/asr", { method: "POST", body: form });
             const data = await response.json();
-            if (!response.ok) throw new Error(data.error || "语音识别失败");
+            if (!response.ok) throw new Error(data.error || "ASR request failed");
             userInput.value = data.text || "";
             resizeInput();
             userInput.focus();
         } catch (error) {
             console.error("语音识别错误：", error);
-            addMessage("我没能听清这段语音。检查麦克风权限、后端服务和 ZHIPU_API_KEY 后，可以再试一次。", false);
+            addMessage(t("asrError"), false);
         } finally {
             removeTyping();
             voiceBtn.disabled = false;
@@ -450,7 +456,7 @@
 
     async function toggleRecording() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            addMessage("这个浏览器暂时不支持录音，可以先用文字和我说。", false);
+            addMessage(t("unsupportedAudio"), false);
             return;
         }
 
@@ -465,16 +471,7 @@
             removeTyping();
             voiceBtn.classList.remove("recording");
             voiceBtn.innerText = "🎙";
-            addMessage("麦克风没有准备好。请允许浏览器使用麦克风后再试一次。", false);
-        }
-    }
-
-    function toggleAudioReply() {
-        audioReplyEnabled = !audioReplyEnabled;
-        audioToggle.classList.toggle("active", audioReplyEnabled);
-        audioToggle.innerText = audioReplyEnabled ? "🔊" : "🔇";
-        if (!audioReplyEnabled && currentReplyAudio) {
-            currentReplyAudio.pause();
+            addMessage(t("micError"), false);
         }
     }
 
@@ -485,7 +482,6 @@
 
     sendBtn.addEventListener("click", handleSend);
     voiceBtn.addEventListener("click", toggleRecording);
-    audioToggle.addEventListener("click", toggleAudioReply);
     userInput.addEventListener("keypress", (event) => {
         if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
@@ -494,7 +490,7 @@
     });
     userInput.addEventListener("input", resizeInput);
 
-    loadHistory();
+    loadLocale().then(loadHistory);
 </script>
 </body>
 </html>

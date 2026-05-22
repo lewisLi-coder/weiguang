@@ -114,6 +114,49 @@ test('POST /api/chat sends history to Zhipu and saves the reply for a clientId',
   }
 });
 
+test('GET /api/locale returns English for non-China country headers', async () => {
+  const server = await createTestServer();
+  try {
+    const response = await fetch(`${server.baseUrl}/api/locale`, {
+      headers: { 'x-vercel-ip-country': 'US' }
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.locale, 'en');
+  } finally {
+    await server.close();
+  }
+});
+
+test('POST /api/chat uses English system prompt for foreign IP requests', async () => {
+  const calls = [];
+  const fakeFetch = async (url, options) => {
+    calls.push({ url, body: JSON.parse(options.body), authorization: options.headers.Authorization });
+    return Response.json({
+      choices: [{ message: { content: 'I hear you.' } }]
+    });
+  };
+  const server = await createTestServer({ apiKey: 'test-key', fetchImpl: fakeFetch });
+  try {
+    const response = await fetch(`${server.baseUrl}/api/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-vercel-ip-country': 'US'
+      },
+      body: JSON.stringify({ message: 'I feel tired', clientId: 'browser-us' })
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.reply, 'I hear you.');
+    assert.match(calls[0].body.messages[0].content, /Always reply in English/);
+  } finally {
+    await server.close();
+  }
+});
+
 test('POST /api/asr returns 500 when API key is missing', async () => {
   const server = await createTestServer();
   try {
@@ -128,56 +171,6 @@ test('POST /api/asr returns 500 when API key is missing', async () => {
 
     assert.equal(response.status, 500);
     assert.match(body.error, /ZHIPU_API_KEY/);
-  } finally {
-    await server.close();
-  }
-});
-
-test('POST /api/tts returns 500 when API key is missing', async () => {
-  const server = await createTestServer();
-  try {
-    const response = await fetch(`${server.baseUrl}/api/tts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: '我在这里。' })
-    });
-    const body = await response.json();
-
-    assert.equal(response.status, 500);
-    assert.match(body.error, /ZHIPU_API_KEY/);
-  } finally {
-    await server.close();
-  }
-});
-
-test('POST /api/tts uses one configured voice and adapts tone parameters', async () => {
-  const calls = [];
-  const fakeFetch = async (url, options) => {
-    calls.push({ url, body: JSON.parse(options.body), authorization: options.headers.Authorization });
-    return new Response(Buffer.from('wav-data'), {
-      status: 200,
-      headers: { 'Content-Type': 'audio/wav' }
-    });
-  };
-  const server = await createTestServer({ apiKey: 'test-key', fetchImpl: fakeFetch });
-  try {
-    const response = await fetch(`${server.baseUrl}/api/tts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: '我知道你今天很难过，我会慢慢陪着你。' })
-    });
-    const body = Buffer.from(await response.arrayBuffer()).toString('utf8');
-
-    assert.equal(response.status, 200);
-    assert.equal(response.headers.get('content-type'), 'audio/wav');
-    assert.equal(body, 'wav-data');
-    assert.equal(calls[0].authorization, 'Bearer test-key');
-    assert.match(calls[0].url, /\/audio\/speech$/);
-    assert.equal(calls[0].body.model, 'glm-tts');
-    assert.equal(calls[0].body.voice, 'female');
-    assert.equal(calls[0].body.response_format, 'wav');
-    assert.equal(calls[0].body.speed, 0.92);
-    assert.equal(calls[0].body.volume, 0.9);
   } finally {
     await server.close();
   }
